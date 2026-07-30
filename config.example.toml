@@ -1,0 +1,9 @@
+# Cursor Usage Notifier configuration
+# Copy to ~/Library/Application Support/cursor-usage-notifier/config.toml
+
+threshold_usd = 50
+poll_minutes = 5
+sound = "Glass"
+
+# Optional override paths
+# state_path = "~/Library/Application Support/cursor-usage-notifier/state.json"
