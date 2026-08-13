@@ -72,7 +72,11 @@ def _format_usd(value: float) -> str:
 
 def _format_quota(snapshot) -> str:
     if snapshot.limit_usd is not None and snapshot.limit_usd > 0:
-        return f"{_format_usd(snapshot.spend_usd)}/{_format_usd(snapshot.limit_usd)}"
+        percent = snapshot.spend_usd / snapshot.limit_usd * 100.0
+        return (
+            f"{_format_usd(snapshot.spend_usd)}/{_format_usd(snapshot.limit_usd)} "
+            f"({percent:.1f}%)"
+        )
     return _format_usd(snapshot.spend_usd)
 
 
