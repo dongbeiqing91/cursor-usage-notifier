@@ -87,29 +87,25 @@ def _parse_iso(value: object) -> str:
 
 
 def _extract_spend_from_summary(summary: dict) -> tuple[float, str]:
+    """
+    Prefer personal total usage over team on-demand overage.
+
+    Enterprise summaries often look like:
+      individualUsage.overall.used  -> personal cycle spend (cents)
+      teamUsage.onDemand.used       -> team-wide on-demand only (not personal total)
+    """
     individual = summary.get("individualUsage") or {}
     on_demand = individual.get("onDemand") or {}
     plan = individual.get("plan") or {}
     overall = individual.get("overall") or {}
 
-    on_demand_used = on_demand.get("used")
-    if on_demand_used is not None and float(on_demand_used) > 0:
-        return _cents_to_usd(on_demand_used), "individualUsage.onDemand.used"
-
-    team_on_demand = (summary.get("teamUsage") or {}).get("onDemand") or {}
-    team_used = team_on_demand.get("used")
-    if team_used is not None and float(team_used) > 0:
-        return _cents_to_usd(team_used), "teamUsage.onDemand.used"
-
     overall_used = overall.get("used")
     if overall_used is not None:
         return _cents_to_usd(overall_used), "individualUsage.overall.used"
 
+    on_demand_used = on_demand.get("used")
     if on_demand_used is not None:
         return _cents_to_usd(on_demand_used), "individualUsage.onDemand.used"
-
-    if team_used is not None:
-        return _cents_to_usd(team_used), "teamUsage.onDemand.used"
 
     # Legacy schema fallback when only plan percentages are available.
     total_percent = plan.get("totalPercentUsed")
@@ -119,6 +115,12 @@ def _extract_spend_from_summary(summary: dict) -> tuple[float, str]:
     api_percent = plan.get("apiPercentUsed")
     if api_percent is not None:
         return float(api_percent), "individualUsage.plan.apiPercentUsed"
+
+    # Team on-demand is a last resort (team-wide, not personal total).
+    team_on_demand = (summary.get("teamUsage") or {}).get("onDemand") or {}
+    team_used = team_on_demand.get("used")
+    if team_used is not None:
+        return _cents_to_usd(team_used), "teamUsage.onDemand.used"
 
     return 0.0, "none"
 

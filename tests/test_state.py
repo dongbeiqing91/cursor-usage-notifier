@@ -6,7 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cursor_usage_notifier.fetch import compute_milestone
+from cursor_usage_notifier.fetch import (
+    _extract_spend_from_summary,
+    compute_milestone,
+)
 from cursor_usage_notifier.state import (
     load_state,
     pending_milestones,
@@ -24,6 +27,20 @@ class MilestoneTests(unittest.TestCase):
     def test_pending_milestones(self) -> None:
         pending = pending_milestones(125.0, 50.0, [50.0])
         self.assertEqual(pending, [100.0])
+
+
+class SpendExtractionTests(unittest.TestCase):
+    def test_prefers_personal_overall_over_team_on_demand(self) -> None:
+        spend, source = _extract_spend_from_summary(
+            {
+                "individualUsage": {
+                    "overall": {"enabled": True, "used": 47753, "limit": 80000}
+                },
+                "teamUsage": {"onDemand": {"enabled": True, "used": 2789}},
+            }
+        )
+        self.assertAlmostEqual(spend, 477.53)
+        self.assertEqual(source, "individualUsage.overall.used")
 
 
 class StateTests(unittest.TestCase):
