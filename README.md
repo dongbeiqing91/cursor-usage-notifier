@@ -1,6 +1,6 @@
 # Cursor Usage Notifier
 
-Lightweight macOS utility that polls Cursor dashboard usage and sends a Notification Center alert every time your current billing-cycle spend crosses another configurable USD threshold (default: **$50**).
+Lightweight macOS utility that polls Cursor dashboard usage and sends a **sticky** top-right alert every time your current billing-cycle spend crosses another configurable USD threshold (default: **$50**). Alerts stay on screen until you click **Close**.
 
 ## Requirements
 
@@ -15,8 +15,26 @@ cd /Users/bedong/Workspaces/cursor-usage-notifier
 python3 -m pip install -e .
 python3 -m cursor_usage_notifier check --dry-run
 python3 -m cursor_usage_notifier check --notify-test
+python3 -m cursor_usage_notifier notify-now
 python3 -m cursor_usage_notifier check
 ```
+
+### Manual usage notification
+
+Fetch current spend and pop one macOS notification immediately (does not change milestone state):
+
+```bash
+python3 -m cursor_usage_notifier notify-now
+```
+
+### Alfred workflow
+
+Type `cursor-usage` in Alfred to run `notify-now` and show a macOS notification.
+
+- Installed into your Alfred sync folder as **Cursor Usage**
+- Repo copy: [`alfred/Cursor Usage.alfredworkflow`](alfred/Cursor%20Usage.alfredworkflow) (double-click to reinstall)
+
+If Alfred does not show it yet, open Alfred Preferences → Workflows and confirm **Cursor Usage** is enabled.
 
 ## Configuration
 
@@ -107,6 +125,7 @@ Token resolution order:
 ## Notes
 
 - Uses unofficial Cursor dashboard endpoints; they may change.
-- Spend source prefers on-demand cents from `/api/usage-summary`, with aggregated-event fallback.
+- Spend source prefers personal `individualUsage.overall.used` (not team on-demand).
+- Notifications use bundled [`bin/alerter`](bin/alerter) with `--timeout 0` so they stay until you click **Close**.
 - First run bootstraps existing milestones for the current cycle without sending backfilled alerts.
 - `install-launchd.sh` forwards `SSL_CERT_FILE` (or Netskope cert if present) for corporate SSL inspection.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -52,11 +53,51 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Send a test notification and exit",
     )
+
+    notify_now = sub.add_parser(
+        "notify-now",
+        help="Fetch current spend and send one macOS notification now",
+    )
+    notify_now.add_argument(
+        "--config",
+        type=Path,
+        help="Path to config TOML",
+    )
     return parser
 
 
 def _format_usd(value: float) -> str:
     return f"${value:,.2f}"
+
+
+def _format_quota(snapshot) -> str:
+    if snapshot.limit_usd is not None and snapshot.limit_usd > 0:
+        return f"{_format_usd(snapshot.spend_usd)}/{_format_usd(snapshot.limit_usd)}"
+    return _format_usd(snapshot.spend_usd)
+
+
+def _next_threshold(spend_usd: float, threshold_usd: float) -> float:
+    if spend_usd < threshold_usd:
+        return threshold_usd
+    return (math.floor(spend_usd / threshold_usd) + 1) * threshold_usd
+
+
+def run_notify_now(*, config_path: Path | None) -> int:
+    config = load_config(config_path)
+    snapshot = fetch_usage_snapshot(resolve_session_token())
+    next_at = _next_threshold(snapshot.spend_usd, config.threshold_usd)
+    quota = _format_quota(snapshot)
+    message = f"This cycle: {quota} (next alert at {_format_usd(next_at)})"
+    send_notification(
+        "Cursor Usage",
+        message,
+        sound=config.sound,
+        group="cursor-usage-notifier-manual",
+    )
+    print(f"billing_cycle: {snapshot.billing_cycle_start} -> {snapshot.billing_cycle_end}")
+    print(f"spend: {quota} (source: {snapshot.source})")
+    print(f"notified: {message}")
+    return 0
 
 
 def run_check(*, config_path: Path | None, dry_run: bool) -> int:
@@ -95,7 +136,7 @@ def run_check(*, config_path: Path | None, dry_run: bool) -> int:
 
     print(f"billing_cycle: {snapshot.billing_cycle_start} -> {snapshot.billing_cycle_end}")
     print(f"membership: {snapshot.membership_type}")
-    print(f"spend: {_format_usd(snapshot.spend_usd)} (source: {snapshot.source})")
+    print(f"spend: {_format_quota(snapshot)} (source: {snapshot.source})")
     print(f"threshold: {_format_usd(config.threshold_usd)}")
     print(f"current_milestone: {_format_usd(milestone) if milestone else '$0.00'}")
     print(f"pending_notifications: {[ _format_usd(x) for x in to_notify ]}")
@@ -106,7 +147,7 @@ def run_check(*, config_path: Path | None, dry_run: bool) -> int:
 
     for crossed in to_notify:
         message = (
-            f"Cursor usage: {_format_usd(snapshot.spend_usd)} this cycle "
+            f"Cursor usage: {_format_quota(snapshot)} "
             f"(crossed {_format_usd(crossed)})"
         )
         send_notification("Cursor Usage", message, sound=config.sound)
@@ -133,6 +174,19 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         try:
             return run_check(config_path=args.config, dry_run=args.dry_run)
+        except AuthError as exc:
+            print(f"auth error: {exc}", file=sys.stderr)
+            return 2
+        except FetchError as exc:
+            print(f"fetch error: {exc}", file=sys.stderr)
+            return 3
+        except NotifyError as exc:
+            print(f"notify error: {exc}", file=sys.stderr)
+            return 4
+
+    if args.command == "notify-now":
+        try:
+            return run_notify_now(config_path=args.config)
         except AuthError as exc:
             print(f"auth error: {exc}", file=sys.stderr)
             return 2

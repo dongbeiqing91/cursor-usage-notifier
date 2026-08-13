@@ -22,6 +22,7 @@ class FetchError(Exception):
 @dataclass(frozen=True)
 class UsageSnapshot:
     spend_usd: float
+    limit_usd: float | None
     billing_cycle_start: str
     billing_cycle_end: str
     membership_type: str
@@ -86,13 +87,15 @@ def _parse_iso(value: object) -> str:
     return str(value)
 
 
-def _extract_spend_from_summary(summary: dict) -> tuple[float, str]:
+def _extract_spend_from_summary(summary: dict) -> tuple[float, float | None, str]:
     """
     Prefer personal total usage over team on-demand overage.
 
     Enterprise summaries often look like:
-      individualUsage.overall.used  -> personal cycle spend (cents)
-      teamUsage.onDemand.used       -> team-wide on-demand only (not personal total)
+      individualUsage.overall.used/limit -> personal cycle spend/quota (cents)
+      teamUsage.onDemand.used            -> team-wide on-demand only (not personal total)
+
+    Returns (spend_usd, limit_usd_or_none, source).
     """
     individual = summary.get("individualUsage") or {}
     on_demand = individual.get("onDemand") or {}
@@ -101,28 +104,43 @@ def _extract_spend_from_summary(summary: dict) -> tuple[float, str]:
 
     overall_used = overall.get("used")
     if overall_used is not None:
-        return _cents_to_usd(overall_used), "individualUsage.overall.used"
+        limit = overall.get("limit")
+        return (
+            _cents_to_usd(overall_used),
+            _cents_to_usd(limit) if limit is not None else None,
+            "individualUsage.overall.used",
+        )
 
     on_demand_used = on_demand.get("used")
     if on_demand_used is not None:
-        return _cents_to_usd(on_demand_used), "individualUsage.onDemand.used"
+        limit = on_demand.get("limit")
+        return (
+            _cents_to_usd(on_demand_used),
+            _cents_to_usd(limit) if limit is not None else None,
+            "individualUsage.onDemand.used",
+        )
 
     # Legacy schema fallback when only plan percentages are available.
     total_percent = plan.get("totalPercentUsed")
     if total_percent is not None:
-        return float(total_percent), "individualUsage.plan.totalPercentUsed"
+        return float(total_percent), None, "individualUsage.plan.totalPercentUsed"
 
     api_percent = plan.get("apiPercentUsed")
     if api_percent is not None:
-        return float(api_percent), "individualUsage.plan.apiPercentUsed"
+        return float(api_percent), None, "individualUsage.plan.apiPercentUsed"
 
     # Team on-demand is a last resort (team-wide, not personal total).
     team_on_demand = (summary.get("teamUsage") or {}).get("onDemand") or {}
     team_used = team_on_demand.get("used")
     if team_used is not None:
-        return _cents_to_usd(team_used), "teamUsage.onDemand.used"
+        limit = team_on_demand.get("limit")
+        return (
+            _cents_to_usd(team_used),
+            _cents_to_usd(limit) if limit is not None else None,
+            "teamUsage.onDemand.used",
+        )
 
-    return 0.0, "none"
+    return 0.0, None, "none"
 
 
 def _fetch_aggregated_total_cents(token: str) -> float:
@@ -151,7 +169,7 @@ def _fetch_aggregated_total_cents(token: str) -> float:
 def fetch_usage_snapshot(token: str) -> UsageSnapshot:
     """Fetch current billing-cycle spend for the authenticated user."""
     summary = _request_json(url=USAGE_SUMMARY_URL, token=token)
-    spend_usd, source = _extract_spend_from_summary(summary)
+    spend_usd, limit_usd, source = _extract_spend_from_summary(summary)
 
     # Percent-based fallback is not dollar spend; try aggregated totals.
     if source.endswith("PercentUsed") or spend_usd <= 0:
@@ -165,6 +183,7 @@ def fetch_usage_snapshot(token: str) -> UsageSnapshot:
 
     return UsageSnapshot(
         spend_usd=max(0.0, spend_usd),
+        limit_usd=limit_usd,
         billing_cycle_start=_parse_iso(summary.get("billingCycleStart")),
         billing_cycle_end=_parse_iso(summary.get("billingCycleEnd")),
         membership_type=str(summary.get("membershipType") or "unknown"),

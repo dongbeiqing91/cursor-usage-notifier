@@ -31,15 +31,20 @@ class MilestoneTests(unittest.TestCase):
 
 class SpendExtractionTests(unittest.TestCase):
     def test_prefers_personal_overall_over_team_on_demand(self) -> None:
-        spend, source = _extract_spend_from_summary(
+        spend, limit, source = _extract_spend_from_summary(
             {
                 "individualUsage": {
-                    "overall": {"enabled": True, "used": 47753, "limit": 80000}
+                    "overall": {
+                        "enabled": True,
+                        "used": 47753,
+                        "limit": 80000,
+                    }
                 },
                 "teamUsage": {"onDemand": {"enabled": True, "used": 2789}},
             }
         )
         self.assertAlmostEqual(spend, 477.53)
+        self.assertAlmostEqual(limit, 800.0)
         self.assertEqual(source, "individualUsage.overall.used")
 
 

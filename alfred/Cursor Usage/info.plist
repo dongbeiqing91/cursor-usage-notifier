@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>com.bedong.cursor-usage-notifier</string>
+	<key>category</key>
+	<string>Tools</string>
+	<key>connections</key>
+	<dict>
+		<key>C04DE974-5FAA-44C0-BC16-D3B3030A0FF1</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>C111B0E3-8B6E-444F-8C55-39AE3C82014A</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
+	</dict>
+	<key>createdby</key>
+	<string>bedong</string>
+	<key>description</key>
+	<string>Show current Cursor monthly usage via macOS notification</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Cursor Usage</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>argumenttype</key>
+				<integer>2</integer>
+				<key>keyword</key>
+				<string>cursor-usage</string>
+				<key>subtext</key>
+				<string>Notify current Cursor monthly usage</string>
+				<key>text</key>
+				<string>Cursor Usage</string>
+				<key>withspace</key>
+				<false/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.keyword</string>
+			<key>uid</key>
+			<string>C04DE974-5FAA-44C0-BC16-D3B3030A0FF1</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>0</integer>
+				<key>script</key>
+				<string>#!/bin/bash
+set -euo pipefail
+
+export PATH="/Library/Frameworks/Python.framework/Versions/3.13/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+
+NETSKOPE_CERT="/Library/Application Support/Netskope/STAgent/download/nscacert_combined.pem"
+if [[ -z "${SSL_CERT_FILE:-}" &amp;&amp; -f "${NETSKOPE_CERT}" ]]; then
+  export SSL_CERT_FILE="${NETSKOPE_CERT}"
+fi
+
+PROJECT_DIR="/Users/bedong/Workspaces/cursor-usage-notifier"
+PYTHON_BIN="$(command -v python3)"
+
+cd "${PROJECT_DIR}"
+"${PYTHON_BIN}" -m cursor_usage_notifier notify-now
+</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>C111B0E3-8B6E-444F-8C55-39AE3C82014A</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>Type cursor-usage in Alfred to fetch current Cursor spend and show a macOS notification.
+
+Requires the cursor-usage-notifier project at /Users/bedong/Workspaces/cursor-usage-notifier.</string>
+	<key>uidata</key>
+	<dict>
+		<key>C04DE974-5FAA-44C0-BC16-D3B3030A0FF1</key>
+		<dict>
+			<key>xpos</key>
+			<integer>100</integer>
+			<key>ypos</key>
+			<integer>100</integer>
+		</dict>
+		<key>C111B0E3-8B6E-444F-8C55-39AE3C82014A</key>
+		<dict>
+			<key>xpos</key>
+			<integer>360</integer>
+			<key>ypos</key>
+			<integer>100</integer>
+		</dict>
+	</dict>
+	<key>version</key>
+	<string>1.0.0</string>
+	<key>webaddress</key>
+	<string>https://github.com/dongbeiqing91/cursor-usage-notifier</string>
+</dict>
+</plist>
