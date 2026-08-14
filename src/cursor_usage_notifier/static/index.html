@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cursor Usage History</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --text: #e7ecf1;
+      --muted: #8b98a5;
+      --accent: #3d9cf0;
+      --line: #2a3440;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1b2a3a 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: end;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.6rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    select {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.95rem;
+      min-width: 140px;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: color-mix(in srgb, var(--panel) 92%, white 8%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .card .k { color: var(--muted); font-size: 0.8rem; margin-bottom: 4px; }
+    .card .v { font-size: 1.25rem; font-weight: 600; }
+    .charts {
+      display: grid;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .chart-wrap {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .chart-wrap h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    canvas { width: 100% !important; max-height: 320px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.92rem;
+    }
+    th { color: var(--muted); font-weight: 500; }
+    tr:last-child td { border-bottom: none; }
+    .empty {
+      color: var(--muted);
+      padding: 28px;
+      text-align: center;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+    }
+    .err { color: #ff8b8b; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Cursor Usage History</h1>
+        <div class="sub">Local snapshots from the usage notifier</div>
+      </div>
+      <div>
+        <label for="month">Month</label>
+        <select id="month"></select>
+      </div>
+    </header>
+
+    <div id="summary" class="summary"></div>
+    <div id="charts" class="charts">
+      <div class="chart-wrap">
+        <h2>Cumulative spend</h2>
+        <canvas id="cumChart"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h2>Daily spend</h2>
+        <canvas id="deltaChart"></canvas>
+      </div>
+    </div>
+    <div id="table"></div>
+    <div id="error" class="err" hidden></div>
+  </main>
+
+  <script>
+    const money = (n) =>
+      n == null ? "—" : `$${Number(n).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+
+    let cumChart;
+    let deltaChart;
+
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function renderSummary(data) {
+      const el = document.getElementById("summary");
+      const last = data.days.at(-1);
+      const pct =
+        data.limit_usd && data.limit_usd > 0
+          ? `${((data.total_spend / data.limit_usd) * 100).toFixed(1)}%`
+          : "—";
+      el.innerHTML = `
+        <div class="card"><div class="k">Month</div><div class="v">${data.month}</div></div>
+        <div class="card"><div class="k">Total spend</div><div class="v">${money(data.total_spend)}</div></div>
+        <div class="card"><div class="k">Quota</div><div class="v">${money(data.limit_usd)}</div></div>
+        <div class="card"><div class="k">Used</div><div class="v">${pct}</div></div>
+        <div class="card"><div class="k">Days with data</div><div class="v">${data.days.length}</div></div>
+        <div class="card"><div class="k">Latest day</div><div class="v">${last ? last.date : "—"}</div></div>
+      `;
+    }
+
+    function renderCharts(data) {
+      const labels = data.days.map((d) => d.date.slice(8));
+      const cum = data.days.map((d) => d.end_spend);
+      const delta = data.days.map((d) => d.day_delta);
+      const common = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#8b98a5" }, grid: { color: "#2a344055" } },
+          y: { ticks: { color: "#8b98a5" }, grid: { color: "#2a344055" } },
+        },
+      };
+
+      if (cumChart) cumChart.destroy();
+      if (deltaChart) deltaChart.destroy();
+
+      cumChart = new Chart(document.getElementById("cumChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            data: cum,
+            borderColor: "#3d9cf0",
+            backgroundColor: "#3d9cf033",
+            fill: true,
+            tension: 0.25,
+            pointRadius: 2,
+          }],
+        },
+        options: { ...common, scales: { ...common.scales, y: { ...common.scales.y, beginAtZero: true } } },
+      });
+
+      deltaChart = new Chart(document.getElementById("deltaChart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            data: delta,
+            backgroundColor: "#5ec8a2cc",
+            borderRadius: 4,
+          }],
+        },
+        options: { ...common, scales: { ...common.scales, y: { ...common.scales.y, beginAtZero: true } } },
+      });
+    }
+
+    function renderTable(data) {
+      const el = document.getElementById("table");
+      if (!data.days.length) {
+        el.innerHTML = `<div class="empty">No snapshots for ${data.month} yet. Keep the notifier running to collect data.</div>`;
+        return;
+      }
+      const rows = data.days
+        .slice()
+        .reverse()
+        .map(
+          (d) => `
+          <tr>
+            <td>${d.date}</td>
+            <td>${money(d.day_delta)}</td>
+            <td>${money(d.end_spend)}</td>
+            <td>${d.percent == null ? "—" : d.percent.toFixed(1) + "%"}</td>
+            <td>${d.sample_count}</td>
+          </tr>`
+        )
+        .join("");
+      el.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Day spend</th>
+              <th>Cumulative</th>
+              <th>% of quota</th>
+              <th>Samples</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function loadMonth(month) {
+      const err = document.getElementById("error");
+      err.hidden = true;
+      try {
+        const data = await fetchJSON(`/api/usage?month=${encodeURIComponent(month)}`);
+        renderSummary(data);
+        renderCharts(data);
+        renderTable(data);
+      } catch (e) {
+        err.hidden = false;
+        err.textContent = e.message || String(e);
+      }
+    }
+
+    async function init() {
+      const select = document.getElementById("month");
+      const meta = await fetchJSON("/api/months");
+      const months = meta.months || [];
+      select.innerHTML = months
+        .map((m) => `<option value="${m}" ${m === meta.default ? "selected" : ""}>${m}</option>`)
+        .join("");
+      select.addEventListener("change", () => loadMonth(select.value));
+      await loadMonth(select.value || meta.default);
+    }
+
+    init();
+  </script>
+</body>
+</html>

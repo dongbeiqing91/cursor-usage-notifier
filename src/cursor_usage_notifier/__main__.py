@@ -15,6 +15,7 @@ from .fetch import (
     fetch_usage_snapshot,
     format_timestamp,
 )
+from .history import record_snapshot
 from .notify import NotifyError, send_notification
 from .state import (
     load_state,
@@ -63,6 +64,32 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Path to config TOML",
     )
+
+    serve = sub.add_parser(
+        "serve",
+        help="Run the local usage history dashboard (http://127.0.0.1:8765)",
+    )
+    serve.add_argument(
+        "--config",
+        type=Path,
+        help="Path to config TOML",
+    )
+    serve.add_argument("--host", help="Bind host (default from config / 127.0.0.1)")
+    serve.add_argument(
+        "--port",
+        type=int,
+        help="Bind port (default from config / 8765)",
+    )
+
+    open_dash = sub.add_parser(
+        "open-dashboard",
+        help="Open the local usage dashboard in your default browser",
+    )
+    open_dash.add_argument(
+        "--config",
+        type=Path,
+        help="Path to config TOML",
+    )
     return parser
 
 
@@ -74,8 +101,8 @@ def _format_quota(snapshot) -> str:
     if snapshot.limit_usd is not None and snapshot.limit_usd > 0:
         percent = snapshot.spend_usd / snapshot.limit_usd * 100.0
         return (
-            f"{_format_usd(snapshot.spend_usd)}/{_format_usd(snapshot.limit_usd)} "
-            f"({percent:.1f}%)"
+            f"{percent:.1f}% "
+            f"{_format_usd(snapshot.spend_usd)}/{_format_usd(snapshot.limit_usd)}"
         )
     return _format_usd(snapshot.spend_usd)
 
@@ -88,7 +115,9 @@ def _next_threshold(spend_usd: float, threshold_usd: float) -> float:
 
 def run_notify_now(*, config_path: Path | None) -> int:
     config = load_config(config_path)
+    ensure_runtime_dirs(config)
     snapshot = fetch_usage_snapshot(resolve_session_token())
+    record_snapshot(config.history_path, snapshot)
     next_at = _next_threshold(snapshot.spend_usd, config.threshold_usd)
     quota = _format_quota(snapshot)
     message = f"This cycle: {quota} (next alert at {_format_usd(next_at)})"
@@ -146,8 +175,10 @@ def run_check(*, config_path: Path | None, dry_run: bool) -> int:
     print(f"pending_notifications: {[ _format_usd(x) for x in to_notify ]}")
 
     if dry_run:
-        print("dry-run: skipping notifications and state write")
+        print("dry-run: skipping notifications, history, and state write")
         return 0
+
+    record_snapshot(config.history_path, snapshot)
 
     for crossed in to_notify:
         message = (
@@ -161,6 +192,46 @@ def run_check(*, config_path: Path | None, dry_run: bool) -> int:
     state.last_spend_usd = snapshot.spend_usd
     state.last_check_at = format_timestamp()
     save_state(config.state_path, state)
+    return 0
+
+
+def run_serve(
+    *,
+    config_path: Path | None,
+    host: str | None,
+    port: int | None,
+) -> int:
+    from .web import run_server
+
+    config = load_config(config_path)
+    ensure_runtime_dirs(config)
+    run_server(
+        host=host or config.web_host,
+        port=port if port is not None else config.web_port,
+        history_path=config.history_path,
+    )
+    return 0
+
+
+def dashboard_url(config_path: Path | None = None) -> str:
+    config = load_config(config_path)
+    host = config.web_host
+    # Prefer localhost in browser URLs when bound to all interfaces.
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"
+    return f"http://{host}:{config.web_port}"
+
+
+def run_open_dashboard(*, config_path: Path | None) -> int:
+    import subprocess
+    import webbrowser
+
+    url = dashboard_url(config_path)
+    try:
+        subprocess.run(["open", url], check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        webbrowser.open(url)
+    print(f"opened: {url}")
     return 0
 
 
@@ -200,6 +271,16 @@ def main(argv: list[str] | None = None) -> int:
         except NotifyError as exc:
             print(f"notify error: {exc}", file=sys.stderr)
             return 4
+
+    if args.command == "serve":
+        return run_serve(
+            config_path=args.config,
+            host=args.host,
+            port=args.port,
+        )
+
+    if args.command == "open-dashboard":
+        return run_open_dashboard(config_path=args.config)
 
     parser.error(f"unknown command: {args.command}")
     return 1

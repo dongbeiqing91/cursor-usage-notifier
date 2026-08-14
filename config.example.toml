@@ -5,5 +5,10 @@ threshold_usd = 50
 poll_minutes = 5
 sound = "Glass"
 
+# Local usage history dashboard
+web_host = "127.0.0.1"
+web_port = 8765
+
 # Optional override paths
 # state_path = "~/Library/Application Support/cursor-usage-notifier/state.json"
+# history_path = "~/Library/Application Support/cursor-usage-notifier/history.sqlite"

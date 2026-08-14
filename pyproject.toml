@@ -15,3 +15,6 @@ cursor-usage-notifier = "cursor_usage_notifier.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+cursor_usage_notifier = ["static/*"]

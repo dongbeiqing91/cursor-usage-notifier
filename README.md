@@ -2,6 +2,8 @@
 
 Lightweight macOS utility that polls Cursor dashboard usage and sends a **sticky** top-right alert every time your current billing-cycle spend crosses another configurable USD threshold (default: **$50**). Alerts stay on screen until you click **Close**.
 
+Each successful poll is also stored in a local SQLite history DB and served by a localhost dashboard with monthly trend charts.
+
 ## Requirements
 
 - macOS
@@ -17,7 +19,10 @@ python3 -m cursor_usage_notifier check --dry-run
 python3 -m cursor_usage_notifier check --notify-test
 python3 -m cursor_usage_notifier notify-now
 python3 -m cursor_usage_notifier check
+python3 -m cursor_usage_notifier serve
 ```
+
+Open the dashboard at [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
 ### Manual usage notification
 
@@ -27,14 +32,39 @@ Fetch current spend and pop one macOS notification immediately (does not change 
 python3 -m cursor_usage_notifier notify-now
 ```
 
+### Usage history dashboard
+
+```bash
+python3 -m cursor_usage_notifier serve
+# or override bind address
+python3 -m cursor_usage_notifier serve --host 127.0.0.1 --port 8765
+```
+
+Open without remembering the URL/port:
+
+```bash
+python3 -m cursor_usage_notifier open-dashboard
+```
+
+Or in Alfred type **`cursor-dash`** and press Enter.
+
+The page shows:
+
+- Month picker
+- Cumulative spend trend
+- Daily spend bars
+- Daily detail table (day spend / cumulative / % of quota)
+
+History file: `~/Library/Application Support/cursor-usage-notifier/history.sqlite`
+
 ### Alfred workflow
 
-Type `cursor-usage` in Alfred to run `notify-now` and show a macOS notification.
+- **`cursor-usage`**: sticky notification with current spend
+- **`cursor-dash`**: open the local dashboard in your browser
 
-- Installed into your Alfred sync folder as **Cursor Usage**
-- Repo copy: [`alfred/Cursor Usage.alfredworkflow`](alfred/Cursor%20Usage.alfredworkflow) (double-click to reinstall)
+Repo copy: [`alfred/Cursor Usage.alfredworkflow`](alfred/Cursor%20Usage.alfredworkflow) (double-click to reinstall)
 
-If Alfred does not show it yet, open Alfred Preferences → Workflows and confirm **Cursor Usage** is enabled.
+If Alfred does not show it yet, open Alfred Preferences → Workflows and confirm **Cursor Usage Notifier** is enabled.
 
 ## Configuration
 
@@ -52,14 +82,20 @@ Settings:
 | `threshold_usd` | `50` | Notify at each multiple of this amount |
 | `poll_minutes` | `5` | Poll interval; used by `install-launchd.sh` as `StartInterval` |
 | `sound` | `Glass` | macOS notification sound |
+| `web_host` | `127.0.0.1` | Dashboard bind host |
+| `web_port` | `8765` | Dashboard bind port |
+| `history_path` | `~/Library/Application Support/cursor-usage-notifier/history.sqlite` | Snapshot DB |
 
 ## Start / stop / login auto-start
 
-Agent label: `com.bedong.cursor-usage-notifier`
+Agent labels:
+
+- `com.bedong.cursor-usage-notifier` — poller
+- `com.bedong.cursor-usage-web` — dashboard (`KeepAlive`)
 
 ### Start (install + load)
 
-Installs the LaunchAgent, loads it, and runs a check immediately:
+Installs both LaunchAgents, loads them, and runs a check immediately:
 
 ```bash
 cd /Users/bedong/Workspaces/cursor-usage-notifier
@@ -71,34 +107,27 @@ Or start/restart an already-installed agent without reinstalling:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.bedong.cursor-usage-notifier
+launchctl kickstart -k gui/$(id -u)/com.bedong.cursor-usage-web
 ```
 
 ### Stop (unload for this session)
 
-Stops the agent until you load it again or log in again (if the plist remains installed):
-
 ```bash
 launchctl bootout gui/$(id -u)/com.bedong.cursor-usage-notifier
+launchctl bootout gui/$(id -u)/com.bedong.cursor-usage-web
 ```
 
 ### Enable login auto-start (开机启动)
 
-`./scripts/install-launchd.sh` installs the plist to `~/Library/LaunchAgents/` with `RunAtLoad=true`, so the agent starts automatically when you log in to macOS.
-
-If the plist is already present but unloaded, enable and load it:
-
-```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bedong.cursor-usage-notifier.plist
-launchctl enable gui/$(id -u)/com.bedong.cursor-usage-notifier
-```
+`./scripts/install-launchd.sh` installs both plists under `~/Library/LaunchAgents/` with `RunAtLoad=true` (web agent also uses `KeepAlive`).
 
 ### Disable login auto-start (关闭开机启动)
 
-Unload and remove the LaunchAgent plist so it will not start on the next login:
-
 ```bash
 launchctl bootout gui/$(id -u)/com.bedong.cursor-usage-notifier 2>/dev/null || true
+launchctl bootout gui/$(id -u)/com.bedong.cursor-usage-web 2>/dev/null || true
 rm -f ~/Library/LaunchAgents/com.bedong.cursor-usage-notifier.plist
+rm -f ~/Library/LaunchAgents/com.bedong.cursor-usage-web.plist
 ```
 
 To re-enable later, run `./scripts/install-launchd.sh` again.
@@ -107,11 +136,14 @@ To re-enable later, run `./scripts/install-launchd.sh` again.
 
 - `~/Library/Logs/cursor-usage-notifier.log`
 - `~/Library/Logs/cursor-usage-notifier.err.log`
+- `~/Library/Logs/cursor-usage-web.log`
+- `~/Library/Logs/cursor-usage-web.err.log`
 
 Check status:
 
 ```bash
 launchctl print gui/$(id -u)/com.bedong.cursor-usage-notifier
+launchctl print gui/$(id -u)/com.bedong.cursor-usage-web
 ```
 
 ## Auth
@@ -128,4 +160,6 @@ Token resolution order:
 - Spend source prefers personal `individualUsage.overall.used` (not team on-demand).
 - Notifications use bundled [`bin/alerter`](bin/alerter) with `--timeout 0` so they stay until you click **Close**.
 - First run bootstraps existing milestones for the current cycle without sending backfilled alerts.
+- Charts only include months/days after snapshots start being recorded (no API backfill).
 - `install-launchd.sh` forwards `SSL_CERT_FILE` (or Netskope cert if present) for corporate SSL inspection.
+- Dashboard binds to localhost only by default.
