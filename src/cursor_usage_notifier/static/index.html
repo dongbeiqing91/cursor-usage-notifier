@@ -196,20 +196,48 @@
       if (cumChart) cumChart.destroy();
       if (deltaChart) deltaChart.destroy();
 
+      const cumDatasets = [{
+        label: "Cumulative",
+        data: cum,
+        borderColor: "#3d9cf0",
+        backgroundColor: "#3d9cf033",
+        fill: true,
+        tension: 0.25,
+        pointRadius: 2,
+      }];
+      const cumY = {
+        ...common.scales.y,
+        beginAtZero: true,
+      };
+      if (data.limit_usd != null && data.limit_usd > 0) {
+        const quota = data.limit_usd;
+        const peak = cum.length ? Math.max(...cum) : 0;
+        cumY.max = Math.max(quota, peak);
+        cumDatasets.push({
+          label: "Quota",
+          data: labels.map(() => quota),
+          borderColor: "#f0a03d",
+          borderDash: [6, 4],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        });
+      }
+
       cumChart = new Chart(document.getElementById("cumChart"), {
         type: "line",
-        data: {
-          labels,
-          datasets: [{
-            data: cum,
-            borderColor: "#3d9cf0",
-            backgroundColor: "#3d9cf033",
-            fill: true,
-            tension: 0.25,
-            pointRadius: 2,
-          }],
+        data: { labels, datasets: cumDatasets },
+        options: {
+          ...common,
+          plugins: {
+            legend: {
+              display: cumDatasets.length > 1,
+              labels: { color: "#8b98a5" },
+            },
+          },
+          scales: { ...common.scales, y: cumY },
         },
-        options: { ...common, scales: { ...common.scales, y: { ...common.scales.y, beginAtZero: true } } },
       });
 
       deltaChart = new Chart(document.getElementById("deltaChart"), {
