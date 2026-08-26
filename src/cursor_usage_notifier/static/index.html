@@ -152,6 +152,16 @@
         maximumFractionDigits: 2,
       })}`;
 
+    const pctOfQuota = (amount, quota) => {
+      if (amount == null || quota == null || quota <= 0) return null;
+      return (Number(amount) / Number(quota)) * 100;
+    };
+
+    const moneyAndPct = (amount, quota) => {
+      const pct = pctOfQuota(amount, quota);
+      return pct == null ? money(amount) : `${money(amount)} (${pct.toFixed(1)}%)`;
+    };
+
     let cumChart;
     let deltaChart;
 
@@ -250,7 +260,21 @@
             borderRadius: 4,
           }],
         },
-        options: { ...common, scales: { ...common.scales, y: { ...common.scales.y, beginAtZero: true } } },
+        options: {
+          ...common,
+          plugins: {
+            ...common.plugins,
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const quota = data.days[ctx.dataIndex]?.limit_usd ?? data.limit_usd;
+                  return moneyAndPct(ctx.parsed.y, quota);
+                },
+              },
+            },
+          },
+          scales: { ...common.scales, y: { ...common.scales.y, beginAtZero: true } },
+        },
       });
     }
 
@@ -267,7 +291,7 @@
           (d) => `
           <tr>
             <td>${d.date}</td>
-            <td>${money(d.day_delta)}</td>
+            <td>${moneyAndPct(d.day_delta, d.limit_usd ?? data.limit_usd)}</td>
             <td>${money(d.end_spend)}</td>
             <td>${d.percent == null ? "—" : d.percent.toFixed(1) + "%"}</td>
             <td>${d.sample_count}</td>
