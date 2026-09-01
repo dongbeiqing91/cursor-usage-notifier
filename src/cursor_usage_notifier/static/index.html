@@ -207,6 +207,16 @@
       if (deltaChart) deltaChart.destroy();
 
       const cumDatasets = [{
+        type: "bar",
+        label: "Day spend",
+        data: delta,
+        backgroundColor: "#5ec8a240",
+        borderColor: "#5ec8a2aa",
+        borderWidth: 1,
+        borderRadius: 4,
+        order: 3,
+      }, {
+        type: "line",
         label: "Cumulative",
         data: cum,
         borderColor: "#3d9cf0",
@@ -214,6 +224,7 @@
         fill: true,
         tension: 0.25,
         pointRadius: 2,
+        order: 1,
       }];
       const cumY = {
         ...common.scales.y,
@@ -224,6 +235,7 @@
         const peak = cum.length ? Math.max(...cum) : 0;
         cumY.max = Math.max(quota, peak);
         cumDatasets.push({
+          type: "line",
           label: "Quota",
           data: labels.map(() => quota),
           borderColor: "#f0a03d",
@@ -232,11 +244,12 @@
           pointRadius: 0,
           fill: false,
           tension: 0,
+          order: 2,
         });
       }
 
       cumChart = new Chart(document.getElementById("cumChart"), {
-        type: "line",
+        type: "bar",
         data: { labels, datasets: cumDatasets },
         options: {
           ...common,
@@ -244,6 +257,14 @@
             legend: {
               display: cumDatasets.length > 1,
               labels: { color: "#8b98a5" },
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const quota = data.days[ctx.dataIndex]?.limit_usd ?? data.limit_usd;
+                  return `${ctx.dataset.label}: ${moneyAndPct(ctx.parsed.y, quota)}`;
+                },
+              },
             },
           },
           scales: { ...common.scales, y: cumY },

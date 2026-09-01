@@ -181,6 +181,11 @@ def daily_series(db_path: Path, year: int, month: int) -> list[DailyUsage]:
                 break
         if previous is None:
             day_delta = end_spend
+        elif end_spend < previous:
+            # Billing-period reset: the counter restarted, so the prior month's
+            # ending balance is not a valid baseline. Use this day's own accumulation.
+            day_start = min(s for s, _ in samples)
+            day_delta = max(0.0, end_spend - day_start)
         else:
             day_delta = max(0.0, end_spend - previous)
         days.append(

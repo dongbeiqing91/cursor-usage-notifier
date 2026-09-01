@@ -75,6 +75,28 @@ class HistoryTests(unittest.TestCase):
             self.assertAlmostEqual(payload["total_spend"], 150.0)
             self.assertAlmostEqual(payload["limit_usd"], 800.0)
 
+    def test_billing_reset_first_day_delta(self) -> None:
+        # Spend counter resets at the billing boundary: August ends high,
+        # September restarts at 0 and accumulates fresh spend on day 1.
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "history.sqlite"
+            t_aug_end = "2026-08-31T20:00:00+00:00"
+            t_sep_a = "2026-09-01T02:00:00+00:00"
+            t_sep_b = "2026-09-01T08:00:00+00:00"
+
+            record_snapshot(db, _snap(732.68), recorded_at=t_aug_end)
+            record_snapshot(db, _snap(0.0), recorded_at=t_sep_a)
+            record_snapshot(db, _snap(49.25), recorded_at=t_sep_b)
+
+            day1 = _local_day(t_sep_a)
+            days = daily_series(db, 2026, 9)
+            by_date = {d.date: d for d in days}
+            self.assertIn(day1, by_date)
+            # Reset detected: delta is the day's own accumulation (49.25),
+            # not max(0, 49.25 - 732.68) which would wrongly be 0.
+            self.assertAlmostEqual(by_date[day1].day_delta, 49.25)
+            self.assertAlmostEqual(by_date[day1].end_spend, 49.25)
+
 
 if __name__ == "__main__":
     unittest.main()
